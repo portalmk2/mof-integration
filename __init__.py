@@ -76,17 +76,17 @@ class UV_OT_MoFUnwrap(bpy.types.Operator):
     
             # Get the imported object
             imported_obj = bpy.context.selected_objects[0]
-    
+            
+            # Rename the UV channel of the imported OBJ file to match the selected UV channel of the original object
+            selected_uv_channel = obj.data.uv_layers.active.name
+            imported_obj.data.uv_layers[0].name = selected_uv_channel
+
             # Add a Data Transfer modifier to copy UVs
             data_trans = obj.modifiers.new(name="DataTransfer", type='DATA_TRANSFER')
             data_trans.object = imported_obj
             data_trans.use_loop_data = True
             data_trans.data_types_loops = {'UV'}
             data_trans.loop_mapping = 'NEAREST_POLYNOR'
-            
-            # Rename the UV channel of the imported OBJ file to match the selected UV channel of the original object
-            selected_uv_channel = obj.data.uv_layers.active.name
-            imported_obj.data.uv_layers[0].name = selected_uv_channel
 
             with context.temp_override(active_object=obj):
                 bpy.ops.object.datalayout_transfer('INVOKE_DEFAULT', data_type='UV')
