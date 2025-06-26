@@ -10,8 +10,7 @@ This is a simple integration addon for Blender that adds a button in the "Tool" 
 5. Select a mesh, find the 'Unwrap' button under UV editor's Tool panel, click it.
 
 ## Current State
-- Default arguments of `Ministry of Flat` are kind of good enough. So no tweakable arguments.😑
+- Arguments added though you don't need them.
 
 ## Future Plan
-- Add arguments if I find some tweaks are necessary. Or tell me what you want. (I might check occasionally.)
-- blablabla
+- I don't know what can be improved.
