@@ -2,7 +2,7 @@ bl_info = {
     "name": "Ministry of Flat Integration",
     "author": "Symphonie",
     "description": "Integrate Ministry of Flat into Blender for UV operations",
-    "version": (0, 5, 0),
+    "version": (0, 5, 1),
     "blender": (4, 3, 0),
     "category": "UV",
 }
@@ -13,6 +13,7 @@ import bpy
 import subprocess
 import os
 import tempfile
+import pathlib
 
 # Preference settings to specify the path of the MoF executable
 class MOF_AddonPreferences(bpy.types.AddonPreferences):
@@ -21,12 +22,50 @@ class MOF_AddonPreferences(bpy.types.AddonPreferences):
     mof_executable: bpy.props.StringProperty(
         name="Executable Path",
         subtype='FILE_PATH',
+        update=lambda self, context: self.correct_executable_path(),
     )
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="The path of Ministry of Flat")
+        layout.label(text="The path of `UnWrapConsole3.exe`")
         layout.prop(self, "mof_executable")
+
+    def correct_executable_path(self):
+        """
+        Corrects the mof_executable path if it's not pointing to 'UnWrapConsole3.exe'.
+        """
+        if not self.mof_executable:
+            return
+
+        path = pathlib.Path(self.mof_executable)
+        
+        if not path.exists():
+            self.mof_executable = ""
+            return
+        
+        if path.is_file() and path.name != "UnWrapConsole3.exe":
+            # If a file, but not the right one, try to find the correct one in the same directory
+            parent_dir = path.parent
+            correct_executable = parent_dir / "UnWrapConsole3.exe"
+            if correct_executable.exists():
+                self.mof_executable = str(correct_executable)
+            else:
+                self.mof_executable = ""
+                print(f"Warning: 'UnWrapConsole3.exe' not found in the directory of the chosen executable.")
+        elif path.is_dir():
+            # if path is a dir, check if it contains "UnWrapConsole3.exe"
+            correct_executable = path / "UnWrapConsole3.exe"
+            if correct_executable.exists():
+                self.mof_executable = str(correct_executable)
+            else:
+                self.mof_executable = ""
+                print(f"Warning: 'UnWrapConsole3.exe' not found in the chosen directory.")
+        else:
+            self.mof_executable = ""
+            
+        if self.mof_executable == "":
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+        
 
 # Operator to run MoF
 class UV_OT_MoFUnwrap(bpy.types.Operator):
@@ -35,18 +74,23 @@ class UV_OT_MoFUnwrap(bpy.types.Operator):
     bl_description = "Automatic unwrap with Ministry of Flat"
 
     def execute(self, context):
-        # Get the active object
-        obj = context.active_object
+        #print("==========", context.active_object, context.selected_objects)
+        obj: bpy.types.Object = context.active_object
         if obj is None or obj.type != 'MESH':
-            self.report({'ERROR'}, "No active mesh object selected")
+            self.report({'ERROR'}, "No mesh object selected")
             return {'CANCELLED'}
+
         
         # Get the path of the MoF executable from preferences
         preferences = bpy.context.preferences.addons[__package__].preferences
         mof_exec = preferences.mof_executable
 
         if not mof_exec:
-            self.report({'ERROR'}, "MoF executable path not set in preferences")
+            self.report({'ERROR'}, "MoF executable path not set or not correct in preferences")
+            return {'CANCELLED'}
+
+        if not os.path.isfile(mof_exec) or os.path.basename(mof_exec) != "UnWrapConsole3.exe":
+            self.report({'ERROR'}, "MoF executable path is not correct (should be 'UnWrapConsole3.exe')")
             return {'CANCELLED'}
     
         # Save the current mode
@@ -56,6 +100,12 @@ class UV_OT_MoFUnwrap(bpy.types.Operator):
     
         # Switch to edit mode
         bpy.ops.object.mode_set(mode='OBJECT')
+
+
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+                
     
         # Export the active object to an OBJ file
         with tempfile.NamedTemporaryFile(suffix=".obj", delete=False) as temp_input:
@@ -77,9 +127,19 @@ class UV_OT_MoFUnwrap(bpy.types.Operator):
             # Get the imported object
             imported_obj = bpy.context.selected_objects[0]
             
-            # Rename the UV channel of the imported OBJ file to match the selected UV channel of the original object
+            # Ensure the original object has a UV map
+            if not obj.data.uv_layers:
+                obj.data.uv_layers.new(name="UVMap")
+                
+            # Get the active UV channel name from the original object
             selected_uv_channel = obj.data.uv_layers.active.name
-            imported_obj.data.uv_layers[0].name = selected_uv_channel
+            
+            # Ensure the imported object has a UV map
+            if not imported_obj.data.uv_layers:
+                imported_obj.data.uv_layers.new(name=selected_uv_channel)
+            else:
+                # Rename the first UV channel to match the original object's UV channel
+                imported_obj.data.uv_layers[0].name = selected_uv_channel
 
             # Add a Data Transfer modifier to copy UVs
             data_trans = obj.modifiers.new(name="DataTransfer", type='DATA_TRANSFER')
@@ -126,6 +186,7 @@ class UV_OT_MoFUnwrap(bpy.types.Operator):
             with context.temp_override(active_object=obj):
                 bpy.ops.uv.select(deselect=True)
                 bpy.ops.object.mode_set(mode=original_mode)
+                
     
             return {'FINISHED'} # Ensure FINISHED is returned even on error for cleanup
 
